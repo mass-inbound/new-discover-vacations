@@ -86,12 +86,58 @@ export async function action({request, context}: ActionFunctionArgs) {
 }
 
 export async function loader({context}: LoaderFunctionArgs) {
-  const {cart} = context;
-  return await cart.get();
+  const {cart, storefront} = context;
+  // Fetch choice products (tag: 'choice')
+  const CHOICE_PRODUCTS_QUERY = `#graphql
+    fragment MoneyProductItem on MoneyV2 {
+      amount
+      currencyCode
+    }
+    fragment ProductItem on Product {
+      id
+      handle
+      title
+      description
+      featuredImage {
+        id
+        altText
+        url
+        width
+        height
+      }
+      priceRange {
+        minVariantPrice {
+          ...MoneyProductItem
+        }
+        maxVariantPrice {
+          ...MoneyProductItem
+        }
+      }
+      tags
+      variants(first: 1) {
+        nodes {
+          id
+        }
+      }
+    }
+    query ChoiceProducts($query: String!) {
+      products(first: 6, query: $query) {
+        nodes {
+          ...ProductItem
+        }
+      }
+    }
+  `;
+  const choiceRes = await storefront.query(CHOICE_PRODUCTS_QUERY, {
+    variables: {query: 'tag:choice'},
+  });
+  const choiceProducts = choiceRes?.products?.nodes || [];
+  const cartData = await cart.get();
+  return {cart: cartData, choiceProducts};
 }
 
 export default function Cart() {
-  const cart = useLoaderData<typeof loader>();
+  const {cart, choiceProducts} = useLoaderData<typeof loader>();
   const location = useLocation();
 
   // Helper to extract offer from cart lines
@@ -194,6 +240,22 @@ export default function Cart() {
 
   // Helper to get all line IDs for clearing the cart
   const allLineIds = cart?.lines?.nodes?.map((line: any) => line.id) || [];
+
+  // Helper: get all choice products in cart
+  function getChoiceProductsInCart(cart: any, choiceProducts: any[]) {
+    if (!cart?.lines?.nodes?.length) return [];
+    return cart.lines.nodes.filter((line: any) => {
+      const attrs = Object.fromEntries(
+        (line.attributes || []).map((attr: {key: string; value: string}) => [
+          attr.key,
+          attr.value,
+        ]),
+      );
+      return choiceProducts.some((prod) => prod.title === attrs['Offer Title']);
+    });
+  }
+
+  const choiceProductsInCart = getChoiceProductsInCart(cart, choiceProducts);
 
   console.log(cartOffer, 'cartOffer');
   return (
@@ -611,6 +673,39 @@ export default function Cart() {
                   <FaGift />
                   Choice of Your Next Vacation Getaway
                 </button>
+                {/* Show selected choice products in cart */}
+                {choiceProductsInCart.length > 0 && (
+                  <div className="mx-8 my-2 flex flex-col gap-2">
+                    <h4 className="text-[#0E424E] font-semibold text-lg mb-2">
+                      Your Selected Bonus Vacation(s):
+                    </h4>
+                    {choiceProductsInCart.map((line: any, idx: number) => {
+                      const attrs = Object.fromEntries(
+                        (line.attributes || []).map(
+                          (attr: {key: string; value: string}) => [
+                            attr.key,
+                            attr.value,
+                          ],
+                        ),
+                      );
+                      return (
+                        <div
+                          key={line.id}
+                          className="flex items-center gap-4 bg-[#FBE7C0] rounded-lg p-2"
+                        >
+                          <img
+                            src={attrs['Offer Image'] || '/assets/orlando.jpg'}
+                            alt={attrs['Offer Title']}
+                            className="w-16 h-16 object-cover rounded"
+                          />
+                          <span className="text-[#0E424E] font-medium">
+                            {attrs['Offer Title']}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <button
                   type="button"
                   className="text-[#0E424E] underline text-[16px] font-[600] mt-4 mx-8"
@@ -642,27 +737,97 @@ export default function Cart() {
         </div>
         <div className="h-[1px] bg-gray-300"></div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 my-10">
-          <div className="rounded-[10px]">
-            <div className="bg-[#F2B233] py-1 text-white font-[500] text-[21px] flex justify-center items-center gap-3 rounded-t-[10px]">
-              <span>
-                <FaGift />
-              </span>
-              <span>Choice A</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 my-10 gap-6">
+          {choiceProducts.length > 0 ? (
+            choiceProducts.map((product: any, idx: number) => (
+              <div key={product.id} className="rounded-[10px] bg-white shadow">
+                <div className="bg-[#F2B233] py-1 text-white font-[500] text-[21px] flex justify-center items-center gap-3 rounded-t-[10px]">
+                  <span>
+                    <FaGift />
+                  </span>
+                  <span>Choice {String.fromCharCode(65 + idx)}</span>
+                </div>
+                <div className="bg-gray-100 flex items-center justify-center p-5 min-h-[180px]">
+                  <img
+                    src={product.featuredImage?.url || '/assets/orlando.jpg'}
+                    alt={product.title}
+                    className="w-full h-[120px] object-cover rounded"
+                  />
+                </div>
+                <div className="p-4">
+                  <h3 className="text-lg font-semibold text-[#0E424E] mb-2 text-center">
+                    {product.title}
+                  </h3>
+                  <p className="font-[400] text-[16px] text-[#0E424E] text-center mb-2">
+                    {product.description?.split('\n')[0]}
+                  </p>
+                  <form
+                    method="post"
+                    action="/cart"
+                    className="flex flex-col items-center mt-2"
+                  >
+                    <input
+                      type="hidden"
+                      name="variantId"
+                      value={product.variants.nodes[0]?.id || ''}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerTitle"
+                      value={product.title}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerImage"
+                      value={product.featuredImage?.url || ''}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerPrice"
+                      value={product.priceRange.minVariantPrice.amount}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerDescription"
+                      value={product.description || ''}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerLocation"
+                      value={
+                        Array.isArray(product.tags)
+                          ? product.tags.find((t: string) =>
+                              t.match(/,|FL|PA/),
+                            ) || ''
+                          : ''
+                      }
+                    />
+                    <input
+                      type="hidden"
+                      name="offerNights"
+                      value={product.nights || 3}
+                    />
+                    <input
+                      type="hidden"
+                      name="offerDays"
+                      value={product.days || 4}
+                    />
+                    <button
+                      type="submit"
+                      className="bg-[#F2B233] text-white rounded-lg py-2 px-4 font-semibold flex items-center gap-2 mt-2"
+                      disabled={!product.variants.nodes[0]?.id}
+                    >
+                      <BsPlusCircleFill /> Select
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-3 text-center text-gray-500 py-12">
+              No bonus vacations available.
             </div>
-            <div className="bg-gray-100 flex items-center justify-center p-5 min-h-[280px]">
-              <p className="font-[400] text-[20px] text-[#0E424E] text-center px-6">
-                4,5 or 7- Night Cruise aboard Carnival, NCL or Royal Caribbean
-                for two adults.
-              </p>
-            </div>
-            <div className="bg-[#F2B233] py-1 text-white font-[500] text-[21px] flex justify-center items-center gap-3 rounded-b-[10px] cursor-pointer">
-              <span>Select</span>
-              <span>
-                <BsPlusCircleFill />
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
         <p className="text-[#676767] font-[400] text-[16px] flex items-center justify-center tracking-wider">
