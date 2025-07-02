@@ -2,7 +2,6 @@ import {IoDiamond} from 'react-icons/io5';
 import {FaCheck, FaGift} from 'react-icons/fa6';
 import {Link} from 'react-router';
 import React from 'react';
-import {AddToCartButton} from './AddToCartButton';
 
 export function OfferCard({
   product,
@@ -90,18 +89,50 @@ export function OfferCard({
           not included taxes + fees
         </span>
       </div>
-      <AddToCartButton
-        lines={[
-          {
-            merchandiseId: product.variants.nodes[0].id,
-            quantity: 1,
-          },
-        ]}
-        className="bg-[#2AB7B7] h-[28px] w-full flex justify-center items-center rounded-b text-white font-[500] text-[12px] cursor-pointer"
-        onClick={() => {}}
+      <form
+        method="post"
+        className="w-full flex justify-center items-center"
+        action="/cart"
       >
-        Select Offer
-      </AddToCartButton>
+        <input
+          type="hidden"
+          name="variantId"
+          value={product.variants.nodes[0].id}
+        />
+        <input type="hidden" name="offerTitle" value={product.title} />
+        <input
+          type="hidden"
+          name="offerImage"
+          value={product.featuredImage?.url || ''}
+        />
+        <input
+          type="hidden"
+          name="offerPrice"
+          value={product.priceRange.minVariantPrice.amount}
+        />
+        <input
+          type="hidden"
+          name="offerDescription"
+          value={product.description || ''}
+        />
+        <input
+          type="hidden"
+          name="offerLocation"
+          value={
+            Array.isArray(product.tags)
+              ? product.tags.find((t: string) => t.match(/,|FL|PA/)) || ''
+              : ''
+          }
+        />
+        <input type="hidden" name="offerNights" value={product.nights || 3} />
+        <input type="hidden" name="offerDays" value={product.days || 4} />
+        <button
+          type="submit"
+          className="bg-[#2AB7B7] h-[28px] w-full flex justify-center items-center rounded-b text-white font-[500] text-[12px] cursor-pointer"
+        >
+          Select Offer
+        </button>
+      </form>
     </div>
   );
 }
