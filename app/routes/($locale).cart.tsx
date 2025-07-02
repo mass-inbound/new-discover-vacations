@@ -81,7 +81,7 @@ export async function action({request, context}: ActionFunctionArgs) {
   const headers = cartId ? cart.setCartId(result.cart.id) : new Headers();
   const {cart: cartResult, errors, warnings} = result;
 
-  const redirectTo = formData.get('redirectTo') ?? null;
+  const redirectTo = formData.get('redirectTo') ?? '/cart';
   if (typeof redirectTo === 'string') {
     status = 303;
     headers.set('Location', redirectTo);
@@ -109,9 +109,19 @@ export default function Cart() {
   const cart = useLoaderData<typeof loader>();
 
   return (
-    <div className="cart">
-      <h1>Cart</h1>
+    <div className="cart-page-container max-w-4xl mx-auto py-12 px-4">
+      <h1 className="text-3xl font-bold mb-8 text-center">Your Carts</h1>
       <CartMain layout="page" cart={cart} />
+      {cart?.checkoutUrl && (
+        <div className="flex justify-end mt-8">
+          <a
+            href={cart.checkoutUrl}
+            className="bg-[#2AB7B7] text-white px-8 py-3 rounded-lg text-lg font-semibold shadow hover:bg-[#229a9a] transition"
+          >
+            Proceed to Checkout
+          </a>
+        </div>
+      )}
     </div>
   );
 }
